@@ -197,8 +197,9 @@ def run(rank, n_gpus, hps):
         eps=hps.train.eps,
     )
     if torch.cuda.is_available():
-        net_g = DDP(net_g, device_ids=[rank], find_unused_parameters=True)
-        net_d = DDP(net_d, device_ids=[rank], find_unused_parameters=True)
+        if n_gpus > 1:
+            net_g = DDP(net_g, device_ids=[rank], find_unused_parameters=True)
+            net_d = DDP(net_d, device_ids=[rank], find_unused_parameters=True)
     else:
         net_g = net_g.to(device)
         net_d = net_d.to(device)
@@ -238,7 +239,7 @@ def run(rank, n_gpus, hps):
                     torch.load(hps.train.pretrained_s2G, map_location="cpu", weights_only=False)["weight"],
                     strict=False,
                 )
-                if torch.cuda.is_available()
+                if hasattr(net_g, "module")
                 else net_g.load_state_dict(
                     torch.load(hps.train.pretrained_s2G, map_location="cpu", weights_only=False)["weight"],
                     strict=False,
@@ -256,7 +257,7 @@ def run(rank, n_gpus, hps):
                 net_d.module.load_state_dict(
                     torch.load(hps.train.pretrained_s2D, map_location="cpu", weights_only=False)["weight"], strict=False
                 )
-                if torch.cuda.is_available()
+                if hasattr(net_d, "module")
                 else net_d.load_state_dict(
                     torch.load(hps.train.pretrained_s2D, map_location="cpu", weights_only=False)["weight"],
                 ),
