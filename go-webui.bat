@@ -1,6 +1,5 @@
-set "SCRIPT_DIR=%~dp0"
-set "SCRIPT_DIR=%SCRIPT_DIR:~0,-1%"
-cd /d "%SCRIPT_DIR%"
-set "PATH=%SCRIPT_DIR%\runtime;%PATH%"
-runtime\python.exe -I webui.py zh_CN
-pause
+@echo off
+setlocal
+rem Examples: go-webui.bat cpu    go-webui.bat -Device cu126 -Language en_US
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0go-webui.ps1" %*
+exit /b %errorlevel%
