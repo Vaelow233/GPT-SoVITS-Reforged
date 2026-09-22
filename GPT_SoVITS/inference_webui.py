@@ -1360,7 +1360,7 @@ with gr.Blocks(title="GPT-SoVITS WebUI", analytics_enabled=False, js=js, css=css
                 interactive=True if torch.cuda.is_available() else False,
                 show_label=True,
                 scale=5,
-                visible=False,
+                visible=True,
             )
             output = gr.Audio(label=i18n("输出的语音"), scale=14)
 
