@@ -1,33 +1,11 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
+device="${1:-cu128}"
+case "$device" in
+    cpu|cu126|cu128) ;;
+    *) echo "Unsupported DEVICE: $device (choose cpu, cu126 or cu128)." >&2; exit 1 ;;
+esac
 
-cd "$SCRIPT_DIR" || exit 1
-
-cd .. || exit 1
-
-set -e
-
-source "$HOME/conda/etc/profile.d/conda.sh"
-
-mkdir -p GPT_SoVITS
-
-mkdir -p GPT_SoVITS/text
-
-ln -s /workspace/models/pretrained_models /workspace/GPT-SoVITS/GPT_SoVITS/pretrained_models
-
-ln -s /workspace/models/G2PWModel /workspace/GPT-SoVITS/GPT_SoVITS/text/G2PWModel
-
-TERM=dumb bash install.sh --device "CU${CUDA_VERSION//./}" --source HF
-
-pip cache purge
-
-pip show torch
-
-rm -rf /tmp/* /var/tmp/*
-
-rm -rf "$HOME/conda/pkgs"
-
-mkdir -p "$HOME/conda/pkgs"
-
-rm -rf /root/.conda /root/.cache
+# Only dependency metadata is copied into this layer, models are installed at runtime
+uv sync --locked --no-dev --extra "$device" --python /usr/local/bin/python3.11

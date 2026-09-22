@@ -1,60 +1,42 @@
-ARG CUDA_VERSION=12.6
-ARG TORCH_BASE=full
+# syntax=docker/dockerfile:1
+ARG UV_VERSION=0.11.7
+FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv
 
-FROM xxxxrt666/torch-base:cu${CUDA_VERSION}-${TORCH_BASE}
-
-LABEL maintainer="XXXXRT"
-LABEL version="V2 Pro"
-LABEL description="Docker image for GPT-SoVITS"
-
-ARG CUDA_VERSION=12.6
-
-ENV CUDA_VERSION=${CUDA_VERSION}
-
-SHELL ["/bin/bash", "-c"]
-
+FROM python:3.11-slim-bookworm AS base
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    UV_PROJECT_ENVIRONMENT=/opt/venv \
+    UV_PYTHON_DOWNLOADS=never \
+    UV_LINK_MODE=copy \
+    PATH="/opt/venv/bin:$PATH"
 WORKDIR /workspace/GPT-SoVITS
+RUN apt update && apt install -y --no-install-recommends bash ca-certificates curl ffmpeg libgomp1 libsndfile1 && rm -rf /var/lib/apt/lists/*
+COPY --from=uv /uv /uvx /usr/local/bin/
 
-COPY Docker /workspace/GPT-SoVITS/Docker/
+FROM base AS dependencies
+ARG TARGETARCH
+ARG DEVICE=cu128
+RUN test "$TARGETARCH" = amd64 || (echo 'uv.lock supports only linux/amd64 containers.' >&2; exit 1)
+RUN apt-get update && apt-get install -y --no-install-recommends build-essential cmake pkg-config && rm -rf /var/lib/apt/lists/*
+COPY pyproject.toml uv.lock .python-version ./
+COPY Docker/install_wrapper.sh /usr/local/bin/install-dependencies
+RUN --mount=type=cache,target=/root/.cache/uv bash /usr/local/bin/install-dependencies "$DEVICE"
 
-ARG LITE=false
-ENV LITE=${LITE}
-
-ARG WORKFLOW=false
-ENV WORKFLOW=${WORKFLOW}
-
-ARG TARGETPLATFORM
-ENV TARGETPLATFORM=${TARGETPLATFORM}
-
-COPY extra-req.txt /workspace/GPT-SoVITS/
-
-COPY requirements.txt /workspace/GPT-SoVITS/
-
-COPY install.sh /workspace/GPT-SoVITS/
-
-RUN bash Docker/install_wrapper.sh
-
+FROM base AS runtime
+ARG DEVICE=cu128
+ENV GPT_SOVITS_DEVICE=${DEVICE} \
+    WEBUI_LANGUAGE=zh_CN \
+    MODEL_SOURCE=ModelScope \
+    DOWNLOAD_MODELS=true \
+    DOWNLOAD_UVR5=false \
+    NVIDIA_DRIVER_CAPABILITIES=compute,utility \
+    PYTHONPATH="/workspace/GPT-SoVITS:/workspace/GPT-SoVITS/GPT_SoVITS/BigVGAN:/workspace/GPT-SoVITS/tools:/workspace/GPT-SoVITS/tools/asr:/workspace/GPT-SoVITS/GPT_SoVITS:/workspace/GPT-SoVITS/tools/uvr5" \
+    LD_LIBRARY_PATH="/opt/venv/lib/python3.11/site-packages/nvidia/cublas/lib:/opt/venv/lib/python3.11/site-packages/nvidia/cudnn/lib:/opt/venv/lib/python3.11/site-packages/torch/lib"
+LABEL org.opencontainers.image.title="GPT-SoVITS-Reforged" \
+      org.opencontainers.image.description="A modern, reproducible, and developer-friendly distribution of GPT-SoVITS"
+COPY --from=dependencies /opt/venv /opt/venv
+COPY . .
+COPY --chmod=755 Docker/entrypoint.sh /usr/local/bin/gpt-sovits-entrypoint
 EXPOSE 9871 9872 9873 9874 9880
-
-ENV PYTHONPATH="/workspace/GPT-SoVITS"
-
-RUN conda init bash && echo "conda activate base" >> ~/.bashrc
-
-WORKDIR /workspace
-
-RUN rm -rf /workspace/GPT-SoVITS
-
-WORKDIR /workspace/GPT-SoVITS
-
-COPY . /workspace/GPT-SoVITS
-
-CMD ["/bin/bash", "-c", "\
-  rm -rf /workspace/GPT-SoVITS/GPT_SoVITS/pretrained_models && \
-  rm -rf /workspace/GPT-SoVITS/GPT_SoVITS/text/G2PWModel && \
-  rm -rf /workspace/GPT-SoVITS/tools/asr/models && \
-  rm -rf /workspace/GPT-SoVITS/tools/uvr5/uvr5_weights && \
-  ln -s /workspace/models/pretrained_models /workspace/GPT-SoVITS/GPT_SoVITS/pretrained_models && \
-  ln -s /workspace/models/G2PWModel /workspace/GPT-SoVITS/GPT_SoVITS/text/G2PWModel && \
-  ln -s /workspace/models/asr_models /workspace/GPT-SoVITS/tools/asr/models && \
-  ln -s /workspace/models/uvr5_weights /workspace/GPT-SoVITS/tools/uvr5/uvr5_weights && \
-  exec bash"]
+ENTRYPOINT ["bash", "/usr/local/bin/gpt-sovits-entrypoint"]
+CMD ["webui"]

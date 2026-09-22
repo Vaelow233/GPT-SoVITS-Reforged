@@ -76,6 +76,19 @@ Common arguments in `go-webui.sh`:
 - `--device <device>`: Select the device you will use. Options: `cu128` (default), `cu126`, `cpu`.
 - `--language <language>`: Select the language you will prefer to use in Web UI. Default is `zh_CN`.
 
+### Docker
+
+Docker uses the same Python 3.11 and uv lockfile as the native installers, with `cpu`, `cu126` and `cu128` images for Linux amd64. From the repository root:
+
+```bash
+docker compose up --build -d cu128
+docker compose logs -f cu128
+```
+
+Replace `cu128` with `cpu` for CPU-only use, or `cu126` for CUDA 12.6. First startup will download models and language resources, then the Web UI will run on http://localhost:9874.
+
+See the [Docker Configuration Guide](Docker/README.md) for environment variables, switching backends and manual builds.
+
 ## Pretrained Models
 
 After installation completes without `-SkipModels` / `--skip-models`, steps 1 and 2 can be skipped.

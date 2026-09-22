@@ -1,84 +1,47 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
+ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+device=cu128
+tag=
 
-cd "$SCRIPT_DIR" || exit 1
-
-set -e
-
-if ! command -v docker &>/dev/null; then
-    echo "Docker Not Found"
-    exit 1
-fi
-
-trap 'echo "Error Occured at \"$BASH_COMMAND\" with exit code $?"; exit 1' ERR
-
-LITE=false
-CUDA_VERSION=12.6
-WORKFLOW=true
-
-print_help() {
-    echo "Usage: bash docker_build.sh [OPTIONS]"
-    echo ""
-    echo "Options:"
-    echo "  --cuda 12.6|12.8    Specify the CUDA VERSION (REQUIRED)"
-    echo "  --lite              Build a Lite Image"
-    echo "  -h, --help          Show this help message and exit"
-    echo ""
-    echo "Examples:"
-    echo "  bash docker_build.sh --cuda 12.6 --funasr --faster-whisper"
+usage() {
+    cat <<'EOF'
+Usage: bash docker_build.sh [--device cpu|cu126|cu128] [--tag IMAGE:TAG]
+Build a linux/amd64 image using Python 3.11 and uv.lock.
+Defaults: --device cu128 --tag gpt-sovits-reforged:local-cu128
+Models are downloaded when the WebUI starts, not during the build.
+EOF
 }
 
-# Show help if no arguments provided
-if [[ $# -eq 0 ]]; then
-    print_help
-    exit 0
-fi
+require_value() {
+    [[ $# -ge 2 && -n "$2" && "$2" != -* ]] || {
+        echo "Missing value for $1" >&2; exit 1;
+    }
+}
 
-# Parse arguments
-while [[ $# -gt 0 ]]; do
+while (($#)); do
     case "$1" in
-    --cuda)
-        case "$2" in
-        12.6)
-            CUDA_VERSION=12.6
-            ;;
-        12.8)
-            CUDA_VERSION=12.8
-            ;;
-        *)
-            echo "Error: Invalid CUDA_VERSION: $2"
-            echo "Choose From: [12.6, 12.8]"
-            exit 1
-            ;;
-        esac
-        shift 2
-        ;;
-    --lite)
-        LITE=true
-        shift
-        ;;
-    *)
-        echo "Unknown Argument: $1"
-        echo "Use -h or --help to see available options."
-        exit 1
-        ;;
+        --device) require_value "$@"; device="${2,,}"; shift 2 ;;
+        --cuda)
+            require_value "$@"
+            case "$2" in
+                12.6) device=cu126 ;;
+                12.8) device=cu128 ;;
+                *) echo 'Supported CUDA versions: 12.6, 12.8.' >&2; exit 1 ;;
+            esac
+            shift 2 ;;
+        --tag) require_value "$@"; tag="$2"; shift 2 ;;
+        --lite) echo 'All images now omit models at build time; remove --lite.' >&2; exit 1 ;;
+        -h|--help) usage; exit 0 ;;
+        *) echo "Unknown argument: $1. See --help." >&2; exit 1 ;;
     esac
 done
 
-TARGETPLATFORM=$(uname -m | grep -q 'x86' && echo "linux/amd64" || echo "linux/arm64")
-
-if [ $LITE = true ]; then
-    TORCH_BASE="lite"
-else
-    TORCH_BASE="full"
-fi
-
-docker build \
-    --build-arg CUDA_VERSION=$CUDA_VERSION \
-    --build-arg LITE=$LITE \
-    --build-arg TARGETPLATFORM="$TARGETPLATFORM" \
-    --build-arg TORCH_BASE=$TORCH_BASE \
-    --build-arg WORKFLOW=$WORKFLOW \
-    -t "${USER}/gpt-sovits:local" \
-    .
+case "$device" in
+    cpu|cu126|cu128) ;;
+    *) echo "Unsupported device: $device (choose cpu, cu126 or cu128)." >&2; exit 1 ;;
+esac
+command -v docker >/dev/null 2>&1 || { echo 'Docker is required on PATH.' >&2; exit 1; }
+exec docker build --platform linux/amd64 --build-arg "DEVICE=$device" \
+    --tag "${tag:-gpt-sovits-reforged:local-$device}" "$ROOT"
